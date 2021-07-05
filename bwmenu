@@ -34,12 +34,17 @@ TYPE_IDENTITY=4
 WOFI_OPTIONS=()
 DEDUP_MARK="(+)"
 
+ASK_PASSWORD_COMMAND="wofi --dmenu -p \"Master Password\" --password --lines 0"
+SEARCH_COMMAND="wofi --dmenu -p Name -i"
+ERROR_COMMAND="wofi -e"
+
 # Source helper functions
+SCRIPT=$(realpath $0)
 DIR="$(dirname "$(readlink -f "$0")")"
 source "$DIR/lib-bwmenu"
 
 ask_password() {
-	mpw=$(printf '' | wofi --dmenu -p "Master Password" --password --lines 0) || exit $?
+	mpw=$(printf '' | $ASK_PASSWORD_COMMAND) || exit $?
 	echo "$mpw" | bw unlock 2>/dev/null | grep 'export' | sed -E 's/.*export BW_SESSION="(.*==)"$/\1/' || exit_error $? "Could not unlock vault"
 }
 
@@ -73,19 +78,14 @@ exit_error() {
 	local code="$1"
 	local message="$2"
 
-	wofi -e "$message"
+	$EXTI_COMMAND "$message"
 	exit "$code"
 }
 
-# Show the Wofi menu with options
+# Show the menu with options
 # Reads items from stdin
-wofi_menu() {
-	wofi --dmenu -p 'Name' \
-		-i
-	# -i --no-custom \
-	# --mesg "$msg" \
-	# "${WOFI_OPTIONS[@]}"
-	# "${actions[@]}" \
+menu() {
+	$SEARCH_COMMAND
 }
 
 # Show items in a wofi menu by name of the item
@@ -94,14 +94,13 @@ show_items() {
 		echo "$ITEMS" |
 			jq -r ".[] | select( has( \"login\" ) ) | \"\\(.name)\"" |
 			dedup_lines |
-			wofi_menu
+			menu
 	); then
 		item_array="$(array_from_name "$item")"
 		"${ENTER_CMD[@]}" "$item_array"
 	else
 		wofi_exit_code=$?
 		item_array="$(array_from_name "$item")"
-		on_wofi_exit "$wofi_exit_code" "$item_array"
 	fi
 }
 
@@ -110,7 +109,7 @@ show_full_items() {
 	if item=$(
 		echo "$ITEMS" |
 			jq -r ".[] | select( has( \"login\" )) | \"\\(.id): name: \\(.name), username: \\(.login.username)\"" |
-			wofi_menu
+			menu
 	); then
 		item_id="$(echo "$item" | cut -d ':' -f 1)"
 		item_array="$(array_from_id "$item_id")"
@@ -119,7 +118,6 @@ show_full_items() {
 		wofi_exit_code=$?
 		item_id="$(echo "$item" | cut -d ':' -f 1)"
 		item_array="$(array_from_id "$item_id")"
-		on_wofi_exit "$wofi_exit_code" "$item_array"
 	fi
 }
 
@@ -129,20 +127,19 @@ show_urls() {
 	if url=$(
 		echo "$ITEMS" |
 			jq -r '.[] | select(has("login")) | .login | select(has("uris")).uris | .[].uri' |
-			wofi_menu
+			menu
 	); then
 		item_array="$(bw list items --url "$url" --session "$BW_HASH")"
 		"${ENTER_CMD[@]}" "$item_array"
 	else
 		wofi_exit_code="$?"
 		item_array="$(bw list items --url "$url" --session "$BW_HASH")"
-		on_wofi_exit "$wofi_exit_code" "$item_array"
 	fi
 }
 
 show_folders() {
 	folders=$(bw list folders --session "$BW_HASH")
-	if folder=$(echo "$folders" | jq -r '.[] | .name' | wofi_menu); then
+	if folder=$(echo "$folders" | jq -r '.[] | .name' | menu); then
 
 		folder_id=$(echo "$folders" | jq -r ".[] | select(.name == \"$folder\").id")
 
@@ -152,7 +149,6 @@ show_folders() {
 		wofi_exit_code="$?"
 		folder_id=$(echo "$folders" | jq -r ".[] | select(.name == \"$folder\").id")
 		item_array=$(bw list items --folderid "$folder_id" --session "$BW_HASH")
-		on_wofi_exit "$wofi_exit_code" "$item_array"
 	fi
 }
 
@@ -162,25 +158,6 @@ sync_bitwarden() {
 
 	load_items
 	show_items
-}
-
-# Evaluate the wofi exit codes
-on_wofi_exit() {
-	case "$1" in
-	10) sync_bitwarden ;;
-	11)
-		load_items
-		show_items
-		;;
-	12) show_urls ;;
-	13) show_folders ;;
-	17) copy_totp "$2" ;;
-	18) lock_vault ;;
-	14) auto_type all "$2" ;;
-	15) auto_type username "$2" ;;
-	16) auto_type password "$2" ;;
-	*) exit "$1" ;;
-	esac
 }
 
 # Auto type using xdotool/ydotool
@@ -315,15 +292,52 @@ copy_password() {
 # Copy the password
 # copy to clipboard and give the user feedback that the password is copied
 # $1: json array of items
+copy_username() {
+	if not_unique "$1"; then
+		ITEMS="$1"
+		show_full_items
+	else
+		pass="$(echo "$1" | jq -r '.[0].login.username')"
+
+		show_copy_notification "$(echo "$1" | jq -r '.[0]')"
+		echo -n "$pass" | clipboard-set
+
+		if [[ $CLEAR -gt 0 ]]; then
+			sleep "$CLEAR"
+			if [[ "$(clipboard-get)" == "$pass" ]]; then
+				clipboard-clear
+			fi
+		fi
+	fi
+}
+
+# Copy the selected field
+# copy to clipboard and give the user feedback that the selected field is copied
+# $1: json array of items
 select_field() {
+	extra_fields=""
+	totp="$(echo $1 | jq -r '.[0].login.totp')"
+	username="$(echo $1 | jq -r '.[0].login.username')"
+	password="$(echo $1 | jq -r '.[0].login.password')"
+
+	if [[ $totp != "null" ]]; then
+		extra_fields="TOTP\n$extra_fields"
+	fi
+	if [[ $username != "null" ]]; then
+		extra_fields="Username\n$extra_fields"
+	fi
+	if [[ $password != "null" ]]; then
+		extra_fields="Password\n$extra_fields"
+	fi
+
 	if not_unique "$1"; then
 		ITEMS="$1"
 		show_full_items
 	else
 
 		if item=$(
-			echo "$(echo "$1" | jq -r '.[0].fields | .[] .name')" |
-				wofi_menu
+			printf "$extra_fields$(echo "$1" | jq -r '.[0].fields | .[] .name')" |
+				menu
 		); then
 			copy_field "$1" "$item"
 		fi
@@ -331,9 +345,20 @@ select_field() {
 }
 
 copy_field() {
+	if [[ "$2" == "Password" ]]; then
+		copy_password "$1"
+		return
+	elif [[ "$2" == "Username" ]]; then
+		copy_username "$1"
+		return
+	elif [[ "$2" == "TOTP" ]]; then
+		copy_totp "$1"
+		return
+	fi
+
 	# er_id=$(echo "$folders" | jq -r ".[] | select(.name == \"$folder\").id")
 	field=$(echo "$1" | jq -r ".[0].fields | .[] | select(.name==\"$2\").value")
-  echo $2
+	echo $2
 
 	show_copy_notification "$(echo "$1" | jq -r '.[0]')"
 	echo -n "$field" | clipboard-set
@@ -394,7 +419,7 @@ show_copy_notification() {
 
 parse_cli_arguments() {
 	# Use GNU getopt to parse command line arguments
-	if ! ARGUMENTS=$(getopt -o c:C --long auto-lock:,clear:,no-clear,show-password,state-path:,help,version -- "$@"); then
+	if ! ARGUMENTS=$(getopt -o c:Cpu -l auto-lock:,clear:,no-clear,show-password,password,user,state-path:,ask-password-command,error-command,search-command,help,version -- "$@"); then
 		exit_error 1 "Failed to parse command-line arguments"
 	fi
 	eval set -- "$ARGUMENTS"
@@ -432,34 +457,20 @@ parse_cli_arguments() {
 				  --show-password
 				      Show the first 4 characters of the copied password in the notification.
 
-				Quick Actions:
-				  When hovering over an item in the wofi menu, you can make use of Quick Actions.
+				  -p, --password
+				      Work with password field.
 
-				  $KB_SYNC  Resync your vault
+				  -u, --user
+				      Work with username field.
 
-				  $KB_URLSEARCH  Search through urls
-				  $KB_NAMESEARCH  Search through names
-				  $KB_FOLDERSELECT  Search through folders
+				  --ask-password-command
+				      Ask pasword command. By default it is wofi
 
-				  $KB_TOTPCOPY  Copy the TOTP
-				  $KB_TYPEALL  Autotype the username and password [needs xdotool or ydotool]
-				  $KB_TYPEUSER  Autotype the username [needs xdotool or ydotool]
-				  $KB_TYPEPASS  Autotype the password [needs xdotool or ydotool]
+				  --search-command
+				      Search command. By default it is wofi
 
-				  $KB_LOCK  Lock your vault
-
-				Examples:
-				  # Default options work well
-				  $NAME
-
-				  # Immediatly lock the Vault after use
-				  $NAME --auto-lock 0
-
-				  # Never lock the Vault
-				  $NAME --auto-lock -1
-
-				  # Place wofi on top of screen, like a Quake console
-				  $NAME -- -location 2
+				  --error-command
+				      Error command. By default it is wofi -e
 			USAGE
 			shift
 			exit 0
@@ -481,8 +492,28 @@ parse_cli_arguments() {
 			CLEAR=0
 			shift
 			;;
+		-p | --password)
+			ENTER_CMD=copy_password
+			shift
+			;;
+		-u | --user)
+			ENTER_CMD=copy_username
+			shift
+			;;
 		--show-password)
 			SHOW_PASSWORD=yes
+			shift
+			;;
+		--ask-password-command)
+			ASK_PASSWORD_OCCMAND=$2
+			shift
+			;;
+		--search-command)
+			ASK_PASSWORD_OCCMAND=$2
+			shift
+			;;
+		--error-command)
+			ASK_PASSWORD_OCCMAND=$2
 			shift
 			;;
 		--)
