@@ -38,6 +38,10 @@ ASK_PASSWORD_COMMAND="wofi --dmenu -p \"Master Password\" --password --lines 0"
 SEARCH_COMMAND="wofi --dmenu -p Name -i"
 ERROR_COMMAND="wofi -e"
 
+ASK_PASSWORD_COMMAND_DMENU="rofi -dmenu -p \"Master Password\" -password -lines 0"
+SEARCH_COMMAND_ROFI="rofi -dmenu -p \"Name\" -i -no-custom"
+ERROR_COMMAND_ROFI="rofi -e"
+
 # Source helper functions
 SCRIPT=$(realpath $0)
 DIR="$(dirname "$(readlink -f "$0")")"
@@ -419,7 +423,7 @@ show_copy_notification() {
 
 parse_cli_arguments() {
 	# Use GNU getopt to parse command line arguments
-	if ! ARGUMENTS=$(getopt -o c:Cpu -l auto-lock:,clear:,no-clear,show-password,password,user,state-path:,ask-password-command,error-command,search-command,help,version -- "$@"); then
+	if ! ARGUMENTS=$(getopt -o c:Cpu -l auto-lock:,rofi,ask-password-command:,error-command:,search-command:,clear:,no-clear,show-password,password,user,help,version -- "$@"); then
 		exit_error 1 "Failed to parse command-line arguments"
 	fi
 	eval set -- "$ARGUMENTS"
@@ -463,14 +467,20 @@ parse_cli_arguments() {
 				  -u, --user
 				      Work with username field.
 
-				  --ask-password-command
+				  --ask-password-command <COMMAND>
 				      Ask pasword command. By default it is wofi
 
-				  --search-command
+				  --search-command <COMMAND>
 				      Search command. By default it is wofi
 
-				  --error-command
+				  --error-command <COMMAND>
 				      Error command. By default it is wofi -e
+
+				  --rofi
+				      Use rofi defaults for commands.
+					  Search command: ${SEARCH_COMMAND_COMMAND_ROFI}
+					  Ask password command: ${ASK_PASSWORD_COMMAND_ROFI}
+					  error command: ${ERROR_COMMAND_ROFI}
 			USAGE
 			shift
 			exit 0
@@ -504,17 +514,23 @@ parse_cli_arguments() {
 			SHOW_PASSWORD=yes
 			shift
 			;;
+		--rofi)
+			ASK_PASSWORD_COMMAND="$ASK_PASSWORD_COMMAND_ROFI"
+			SEARCH_COMMAND="$SEARCH_COMMAND_ROFI"
+			ERROR_COMMAND="$ERROR_COMMAND_ROFI"
+			shift
+			;;
 		--ask-password-command)
 			ASK_PASSWORD_COMMAND=$2
-			shift
+			shift 2
 			;;
 		--search-command)
-			ASK_PASSWORD_COMMAND=$2
-			shift
+			SEARCH_COMMAND=$2
+			shift 2
 			;;
 		--error-command)
-			ASK_PASSWORD_COMMAND=$2
-			shift
+			ERROR_COMMAND=$2
+			shift 2
 			;;
 		--)
 			shift
