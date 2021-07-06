@@ -36,11 +36,9 @@ DEDUP_MARK="(+)"
 
 ASK_PASSWORD_COMMAND="wofi --dmenu -p \"Master Password\" --password --lines 0"
 SEARCH_COMMAND="wofi --dmenu -p Name -i"
-ERROR_COMMAND="wofi -e"
 
-ASK_PASSWORD_COMMAND_DMENU="rofi -dmenu -p \"Master Password\" -password -lines 0"
-SEARCH_COMMAND_ROFI="rofi -dmenu -p \"Name\" -i -no-custom"
-ERROR_COMMAND_ROFI="rofi -e"
+ASK_PASSWORD_COMMAND_ROFI="rofi -dmenu -p \"Master Password\" -password -lines 0"
+SEARCH_COMMAND_ROFI="rofi -dmenu -p Name -i -no-custom"
 
 # Source helper functions
 SCRIPT=$(realpath $0)
@@ -48,7 +46,7 @@ DIR="$(dirname "$(readlink -f "$0")")"
 source "$DIR/lib-bwmenu"
 
 ask_password() {
-	mpw=$(printf '' | $ASK_PASSWORD_COMMAND) || exit $?
+	mpw=$(printf '' | eval "$ASK_PASSWORD_COMMAND") || exit $?
 	echo "$mpw" | bw unlock 2>/dev/null | grep 'export' | sed -E 's/.*export BW_SESSION="(.*==)"$/\1/' || exit_error $? "Could not unlock vault"
 }
 
@@ -82,14 +80,15 @@ exit_error() {
 	local code="$1"
 	local message="$2"
 
-	$EXTI_COMMAND "$message"
+	notify-send "Bwmenu error occurred" "$message" -i /usr/share/icons/hicolor/64x64/apps/bitwarden.png
+
 	exit "$code"
 }
 
 # Show the menu with options
 # Reads items from stdin
 menu() {
-	$SEARCH_COMMAND
+	eval "$SEARCH_COMMAND"
 }
 
 # Show items in a wofi menu by name of the item
@@ -473,14 +472,10 @@ parse_cli_arguments() {
 				  --search-command <COMMAND>
 				      Search command. By default it is wofi
 
-				  --error-command <COMMAND>
-				      Error command. By default it is wofi -e
-
 				  --rofi
 				      Use rofi defaults for commands.
 					  Search command: ${SEARCH_COMMAND_COMMAND_ROFI}
 					  Ask password command: ${ASK_PASSWORD_COMMAND_ROFI}
-					  error command: ${ERROR_COMMAND_ROFI}
 			USAGE
 			shift
 			exit 0
@@ -517,7 +512,6 @@ parse_cli_arguments() {
 		--rofi)
 			ASK_PASSWORD_COMMAND="$ASK_PASSWORD_COMMAND_ROFI"
 			SEARCH_COMMAND="$SEARCH_COMMAND_ROFI"
-			ERROR_COMMAND="$ERROR_COMMAND_ROFI"
 			shift
 			;;
 		--ask-password-command)
@@ -526,10 +520,6 @@ parse_cli_arguments() {
 			;;
 		--search-command)
 			SEARCH_COMMAND=$2
-			shift 2
-			;;
-		--error-command)
-			ERROR_COMMAND=$2
 			shift 2
 			;;
 		--)
