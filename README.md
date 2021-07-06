@@ -43,11 +43,12 @@ Install these **required** dependencies:
 - bitwarden-cli
 - jq
 
-> __Gentoo Users__: It appears Gentoo does not provide a kernel with `keyctl`. If so, make sure to install this as well
+> __Gentoo Users__: It appears Gentoo and some other systems does not provide a kernel with `keyctl`. If so, make sure to install this as well
 
 **Optionally** install these requirements:
 - xclip, xsel, or wl-clipboard
 - xdotool or ydotool
+- libnotify to display notifications via `notify-send`
 
 Then download the script file and place it somewhere on your `$PATH` and grant it
 the `+x` permission.
