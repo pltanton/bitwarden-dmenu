@@ -505,15 +505,15 @@ parse_cli_arguments() {
 			shift
 			;;
 		--ask-password-command)
-			ASK_PASSWORD_OCCMAND=$2
+			ASK_PASSWORD_COMMAND=$2
 			shift
 			;;
 		--search-command)
-			ASK_PASSWORD_OCCMAND=$2
+			ASK_PASSWORD_COMMAND=$2
 			shift
 			;;
 		--error-command)
-			ASK_PASSWORD_OCCMAND=$2
+			ASK_PASSWORD_COMMAND=$2
 			shift
 			;;
 		--)
