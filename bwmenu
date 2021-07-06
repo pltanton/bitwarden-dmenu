@@ -34,7 +34,7 @@ TYPE_IDENTITY=4
 WOFI_OPTIONS=()
 DEDUP_MARK="(+)"
 
-ASK_PASSWORD_COMMAND="wofi --dmenu -p \"Master Password\" --password --lines 0"
+ASK_PASSWORD_COMMAND="wofi --dmenu -p \"Master Password\" --password --lines 1"
 SEARCH_COMMAND="wofi --dmenu -p Name -i"
 
 ASK_PASSWORD_COMMAND_ROFI="rofi -dmenu -p \"Master Password\" -password -lines 0"
