@@ -40,6 +40,8 @@ SEARCH_COMMAND="wofi --dmenu -p Name -i"
 ASK_PASSWORD_COMMAND_ROFI="rofi -dmenu -p \"Master Password\" -password -lines 0"
 SEARCH_COMMAND_ROFI="rofi -dmenu -p Name -i -no-custom"
 
+ICON="/usr/share/icons/hicolor/64x64/apps/bitwarden.png"
+
 # Source helper functions
 SCRIPT=$(realpath $0)
 DIR="$(dirname "$(readlink -f "$0")")"
@@ -80,7 +82,7 @@ exit_error() {
 	local code="$1"
 	local message="$2"
 
-	notify-send "Bwmenu error occurred" "$message" -i /usr/share/icons/hicolor/64x64/apps/bitwarden.png
+	notify-send "Bwmenu error occurred" "$message" -i "$ICON"
 
 	exit "$code"
 }
@@ -280,7 +282,7 @@ copy_password() {
 	else
 		pass="$(echo "$1" | jq -r '.[0].login.password')"
 
-		show_copy_notification "$(echo "$1" | jq -r '.[0]')"
+		show_copy_notification "$(echo "$1" | jq -r '.[0]')" "Password"
 		echo -n "$pass" | clipboard-set
 
 		if [[ $CLEAR -gt 0 ]]; then
@@ -302,7 +304,7 @@ copy_username() {
 	else
 		pass="$(echo "$1" | jq -r '.[0].login.username')"
 
-		show_copy_notification "$(echo "$1" | jq -r '.[0]')"
+		show_copy_notification "$(echo "$1" | jq -r '.[0]')" "Username"
 		echo -n "$pass" | clipboard-set
 
 		if [[ $CLEAR -gt 0 ]]; then
@@ -363,7 +365,7 @@ copy_field() {
 	field=$(echo "$1" | jq -r ".[0].fields | .[] | select(.name==\"$2\").value")
 	echo $2
 
-	show_copy_notification "$(echo "$1" | jq -r '.[0]')"
+	show_copy_notification "$(echo "$1" | jq -r '.[0]')" "$2"
 	echo -n "$field" | clipboard-set
 
 	if [[ $CLEAR -gt 0 ]]; then
@@ -387,8 +389,16 @@ copy_totp() {
 			exit_error 1 "$totp"
 		fi
 
+		show_copy_notification "$(echo "$1" | jq -r '.[0]')" "TOTP"
 		echo -n "$totp" | clipboard-set
-		notify-send "TOTP Copied"
+
+		if [[ $CLEAR -gt 0 ]]; then
+			sleep "$CLEAR"
+			if [[ "$(clipboard-get)" == "$pass" ]]; then
+				clipboard-clear
+			fi
+		fi
+
 	fi
 }
 
@@ -404,7 +414,7 @@ show_copy_notification() {
 	local body=""
 	local extra_options=()
 
-	title="<b>$(echo "$1" | jq -r '.name')</b> copied"
+	title="${2} for $(echo "$1" | jq -r '.name') copied"
 
 	if [[ $SHOW_PASSWORD == "yes" ]]; then
 		pass=$(echo "$1" | jq -r '.login.password')
@@ -412,17 +422,17 @@ show_copy_notification() {
 	fi
 
 	if [[ $CLEAR -gt 0 ]]; then
-		body="$body<br>Will be cleared in ${CLEAR} seconds."
+		body="$body\nWill be cleared in ${CLEAR} seconds."
 		# Keep notification visible while the clipboard contents are active.
 		extra_options+=("-t" "$((CLEAR * 1000))")
 	fi
 	# not sure if icon will be present everywhere, /usr/share/icons is default icon location
-	notify-send "$title" "$body" "${extra_options[@]}" -i /usr/share/icons/hicolor/64x64/apps/bitwarden.png
+	notify-send "$title" "$body" "${extra_options[@]}" -i "$ICON"
 }
 
 parse_cli_arguments() {
 	# Use GNU getopt to parse command line arguments
-	if ! ARGUMENTS=$(getopt -o c:Cpu -l auto-lock:,rofi,ask-password-command:,error-command:,search-command:,clear:,no-clear,show-password,password,user,help,version -- "$@"); then
+	if ! ARGUMENTS=$(getopt -o c:Cpui: -l icon:,auto-lock:,rofi,ask-password-command:,error-command:,search-command:,clear:,no-clear,show-password,password,user,help,version -- "$@"); then
 		exit_error 1 "Failed to parse command-line arguments"
 	fi
 	eval set -- "$ARGUMENTS"
@@ -449,7 +459,7 @@ parse_cli_arguments() {
 				      Use -1 to disable.
 				      Default: 900 (15 minutes)
 
-				  -c <SECONDS>, --clear <SECONDS>, --clear=<SECONDS>
+				  -c <SECONDS>, --clear <SECONDS>
 				      Clear password from clipboard after this many seconds.
 				      Defaults: ${DEFAULT_CLEAR} seconds.
 
@@ -476,6 +486,10 @@ parse_cli_arguments() {
 				      Use rofi defaults for commands.
 					  Search command: ${SEARCH_COMMAND_COMMAND_ROFI}
 					  Ask password command: ${ASK_PASSWORD_COMMAND_ROFI}
+
+				  -i <PATH_TO_ICON>, --icon <PATH_TO_ICON>
+				      Specify path to icon, that will be used for notify-send
+
 			USAGE
 			shift
 			exit 0
@@ -487,6 +501,10 @@ parse_cli_arguments() {
 			;;
 		--auto-lock)
 			AUTO_LOCK=$2
+			shift 2
+			;;
+		-i | --icon)
+			ICON="$2"
 			shift 2
 			;;
 		-c | --clear)
