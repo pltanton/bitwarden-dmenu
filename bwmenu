@@ -37,15 +37,44 @@ DEDUP_MARK="(+)"
 ASK_PASSWORD_COMMAND="wofi --dmenu -p \"Master Password\" --password --lines 1"
 SEARCH_COMMAND="wofi --dmenu -p Name -i"
 
+ASK_PASSWORD_COMMAND_FUZZEL="fuzzel -d -l 0 --password -p \"Master  Password > \" < /etc/fstab"
+SEARCH_COMMAND_FUZZEL="fuzzel -d -p \"Name > \""
+
 ASK_PASSWORD_COMMAND_ROFI="rofi -dmenu -p \"Master Password\" -password -lines 0"
 SEARCH_COMMAND_ROFI="rofi -dmenu -p Name -i -no-custom"
 
 ICON="/usr/share/icons/hicolor/64x64/apps/bitwarden.png"
 
-# Source helper functions
-SCRIPT=$(realpath $0)
-DIR="$(dirname "$(readlink -f "$0")")"
-source "$DIR/lib-bwmenu"
+# Helper functions
+
+# Extract item or items matching .name, including deduplication
+# $1: item name, prepended or not with deduplication mark
+array_from_name() {
+	item_name="$(echo "$1" | sed "s/$DEDUP_MARK //")"
+	echo "$ITEMS" | jq -r ". | map(select((.name == \"$item_name\") and (.type == $TYPE_LOGIN)))"
+}
+
+# Extract item matching .id
+# $1: string starting with ".id:"
+array_from_id() {
+	echo "$ITEMS" | jq -r ". | map(select(.id == \"$1\"))"
+}
+
+# Count the number of items in an array. Return true if more than 1 or none
+# $1: Array of items
+not_unique() {
+	item_count=$(echo "$1" | jq -r '. | length')
+	! [[ $item_count -eq 1 ]]
+}
+
+# Pipe a document and deduplicate lines.
+# Mark those duplicated by prepending $DEDUP_MARK
+dedup_lines() {
+	sort | uniq -c |
+		sed "s/^\s*1 //" |
+		sed -r "s/^\s*[0-9]+ /$DEDUP_MARK /"
+}
+
 
 ask_password() {
 	mpw=$(printf '' | eval "$ASK_PASSWORD_COMMAND") || exit $?
@@ -71,7 +100,7 @@ get_session_key() {
 }
 
 # source the hash file to gain access to the BitWarden CLI
-# Pre fetch all the items
+# Pre-fetch all the items
 load_items() {
 	if ! ITEMS=$(bw list items --session "$BW_HASH" 2>/dev/null); then
 		exit_error $? "Could not load items"
@@ -432,7 +461,7 @@ show_copy_notification() {
 
 parse_cli_arguments() {
 	# Use GNU getopt to parse command line arguments
-	if ! ARGUMENTS=$(getopt -o c:Cpui: -l icon:,auto-lock:,rofi,ask-password-command:,error-command:,search-command:,clear:,no-clear,show-password,password,user,help,version -- "$@"); then
+	if ! ARGUMENTS=$(getopt -o c:Cpui: -l icon:,auto-lock:,rofi,fuzzel,ask-password-command:,error-command:,search-command:,clear:,no-clear,show-password,password,user,help,version -- "$@"); then
 		exit_error 1 "Failed to parse command-line arguments"
 	fi
 	eval set -- "$ARGUMENTS"
@@ -487,6 +516,11 @@ parse_cli_arguments() {
 					  Search command: ${SEARCH_COMMAND_COMMAND_ROFI}
 					  Ask password command: ${ASK_PASSWORD_COMMAND_ROFI}
 
+				  --fuzzel
+				      Use fuzzel defaults for commands.
+					  Search command: ${SEARCH_COMMAND_FUZZEL}
+					  Ask password command: ${ASK_PASSWORD_COMMAND_FUZZEL}
+
 				  -i <PATH_TO_ICON>, --icon <PATH_TO_ICON>
 				      Specify path to icon, that will be used for notify-send
 
@@ -530,6 +564,11 @@ parse_cli_arguments() {
 		--rofi)
 			ASK_PASSWORD_COMMAND="$ASK_PASSWORD_COMMAND_ROFI"
 			SEARCH_COMMAND="$SEARCH_COMMAND_ROFI"
+			shift
+			;;
+		--fuzzel)
+			ASK_PASSWORD_COMMAND="$ASK_PASSWORD_COMMAND_FUZZEL"
+			SEARCH_COMMAND="$SEARCH_COMMAND_FUZZEL"
 			shift
 			;;
 		--ask-password-command)
