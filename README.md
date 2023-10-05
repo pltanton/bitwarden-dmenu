@@ -45,7 +45,7 @@ Import it as flake and use default application in your application's list.
 
 Install these **required** dependencies:
 
-- rofi/wofi/dmenu or whatever you want
+- rofi/wofi/dmenu/fuzzel or whatever you want
 - bitwarden-cli
 - jq
 
@@ -90,3 +90,4 @@ Copyright © 2018-2021
 - Baptiste Pierrat
 - Nathan Wallace
 - Anton Plotnikov
+- Leon Lilje
